@@ -1,7 +1,5 @@
-import json
 from typing import List
 from rest_framework import serializers
-from django.http import HttpResponse, JsonResponse
 from rest_framework.exceptions import ParseError
 from .models import PackageRelease, Project
 from .checker import PackageChecker
@@ -41,32 +39,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return create_project
 
     def update(self, instance, validated_data):
-        pass
-        related_packages = PackageRelease.objects.filter(project=instance.id)
-        # print(related_packages.filter(name="Django"))  # Deletar
-        print(related_packages)
-        # TODO: Improve to handle objects in code so it will not be necessary
-        #       to execute more DB queries more than necessary
-        # ordered_dict_list = []
-        # for i in related_packages:
-        #     ordered_dict: OrderedDict = OrderedDict({"name": i.name.upper(
-        #     ), "version": i.version, "id": i.id, "in_validated_data": False,
-        #         "same_version": False})
-        #     ordered_dict_list.append(ordered_dict)
-        # for i in range(len(ordered_dict_list)):
-        #     for k in validated_data['packages']:
-        #         print(ordered_dict_list[i]['name'])
-        #         print(k['name'])
-        #         if ordered_dict_list[i]['name'] == k['name'].upper():
-        #             ordered_dict_list[i]['in_validated_data'] = True
-        #             if ordered_dict_list[i]['version'] == k['version']:
-        #                 ordered_dict_list[i]['same_version'] = True
-        #                 break
-        #             else:
-        #                 ordered_dict_list[i]['same_version'] = False
-        #                 break
         if self.context['request'].method == "PUT":
-            # packages_dict = {package in for package in related_packages}
             if instance.name != validated_data['name']:
                 instance.name = validated_data['name']
                 instance.save()
@@ -95,8 +68,6 @@ class ProjectSerializer(serializers.ModelSerializer):
                         del validated_data["packages"][i-deleted_packages]
                         deleted_packages += 1
                         upgrade_data_if_success.extend(packages)
-                        # package.delete()
-                    # if empty turn pop
                     print(type(package))
                 except ParseError as e:
                     print(e)
@@ -105,7 +76,6 @@ class ProjectSerializer(serializers.ModelSerializer):
                             {"error": "One or more packages doesn't exist"})
                 except Exception as e:
                     print(e)
-            # print(validated_data["packages"])
             if validated_data["packages"]:
                 packages: List = \
                     PackageChecker.checking_packages(
@@ -121,26 +91,40 @@ class ProjectSerializer(serializers.ModelSerializer):
             return instance
 
         elif self.context['request'].method == "PATCH":
-            for package in related_packages:
-                print(package.name)
-
-        print(instance.id)
-        # for package in related_packages:
-        #     print(package.name)
-        # print(instance.packages)
-        print(validated_data)
-        # PackageChecker.checking_packages(validated_data['packages'])
-        print("type", type(validated_data))
-        print("entrou aqui")
-        print("instancia", instance)
-        print("validated_data", validated_data)
-        return instance
-
-    # def to_representation(self, instance):
-        # ret = super(ProjectSerializer, self).to_representation(instance)
-        # # check the request is list view or detail view
-        # is_list_view = isinstance(self.instance, list)
-        # extra_ret = {'key': 'list value'} if is_list_view else {
-        #     'key': 'single value'}
-        # ret.update(extra_ret)
-        # return {"teste": "teste"}
+            if "packages" in validated_data:
+                new_packages: List[OrderedDict] = []
+                old_packages: List[OrderedDict] = []
+                for i in validated_data["packages"]:
+                    try:
+                        package = PackageRelease.objects.get(name=i['name'])
+                        if i['version'] != package.version:
+                            old_packages.append(i)
+                    except Exception as e:
+                        print(type(e))
+                        print(f"{i['name']} {e}")
+                        print(f"adding {i['name']} to 'new_packages'")
+                        new_packages.append(i)
+                if new_packages or old_packages:
+                    packages_new = []
+                    packages_old = []
+                    if new_packages:
+                        packages_new: List[OrderedDict] = \
+                            PackageChecker.checking_packages(new_packages)
+                    if old_packages:
+                        packages_old: List[OrderedDict] = \
+                            PackageChecker.checking_packages(old_packages)
+                    if packages_new:
+                        for i in packages_new:
+                            PackageRelease.objects.create(
+                                **i, project=instance)
+                    if packages_old:
+                        for i in packages_old:
+                            package = PackageRelease.objects.get(
+                                name=i['name'])
+                            package.version = i['version']
+                            package.save()
+            if 'name' in validated_data and \
+                    validated_data['name'] != instance.name:
+                instance.name = validated_data['name']
+                instance.save()
+            return instance
