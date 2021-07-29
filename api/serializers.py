@@ -98,20 +98,28 @@ class ProjectSerializer(serializers.ModelSerializer):
                         # package.delete()
                     # if empty turn pop
                     print(type(package))
-                except Exception as e:
+                except ParseError as e:
+                    print(e)
                     if e.detail['error'].code == 'parse_error':
                         raise ParseError(
                             {"error": "One or more packages doesn't exist"})
-                    else:
-                        print(e)
-            print(validated_data["packages"])
+                except Exception as e:
+                    print(e)
+            # print(validated_data["packages"])
+            if validated_data["packages"]:
+                packages: List = \
+                    PackageChecker.checking_packages(
+                        validated_data["packages"])
+                for i in packages:
+                    PackageRelease.objects.create(**i, project=instance)
+
             for i in upgrade_data_if_success:
                 package = PackageRelease.objects.get(
                     name=i['name'])
                 package.version = i['version']
                 package.save()
-            if
             return instance
+
         elif self.context['request'].method == "PATCH":
             for package in related_packages:
                 print(package.name)
