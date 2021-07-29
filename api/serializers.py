@@ -2,8 +2,9 @@ from typing import List
 from rest_framework import serializers
 from rest_framework.exceptions import ParseError
 from .models import PackageRelease, Project
-from .checker import PackageChecker
+from .components.checker import PackageChecker
 from collections import OrderedDict
+from .components.logger import logger
 
 
 class PackageSerializer(serializers.ModelSerializer):
@@ -21,25 +22,26 @@ class ProjectSerializer(serializers.ModelSerializer):
     packages = PackageSerializer(many=True)
 
     def create(self, validated_data):
-        # TODO
-        # - Processar os pacotes recebidos
-        # - Persistir informações no banco
+        logger.debug(
+            f"[Serializers] Creating an new Project. Project: {validated_data}"
+        )
         packages: List = validated_data['packages']
-        print("packages", packages)
-        print("type packages", type(packages))
         packages: List = \
             PackageChecker.checking_packages(
                 packages)
         create_project = Project.objects.create(name=validated_data["name"])
-        print(create_project.id)
         for i in packages:
-            package = PackageRelease.objects.create(
+            PackageRelease.objects.create(
                 **i, project=create_project)
-            print(package.id)
+        logger.debug(
+            f"[Serializers] Project created. Project: {validated_data}"
+        )
         return create_project
 
     def update(self, instance, validated_data):
         if self.context['request'].method == "PUT":
+            logger.debug(
+                f"[Serializers] Method PUT, inserting {validated_data} on DB")
             if instance.name != validated_data['name']:
                 instance.name = validated_data['name']
                 instance.save()
@@ -51,7 +53,10 @@ class ProjectSerializer(serializers.ModelSerializer):
             deleted_packages = 0
             for i in range(len(validated_data["packages"])):
                 try:
-                    print(validated_data["packages"])
+                    logger.debug(
+                        f"[Serializers] Checking if {instance.name}'s" +
+                        " packages' versions the versions received are " +
+                        "the same")
                     package = PackageRelease.objects.get(
                         name=validated_data["packages"][i-deleted_packages]
                         ['name'])
@@ -68,14 +73,13 @@ class ProjectSerializer(serializers.ModelSerializer):
                         del validated_data["packages"][i-deleted_packages]
                         deleted_packages += 1
                         upgrade_data_if_success.extend(packages)
-                    print(type(package))
                 except ParseError as e:
-                    print(e)
                     if e.detail['error'].code == 'parse_error':
                         raise ParseError(
                             {"error": "One or more packages doesn't exist"})
                 except Exception as e:
-                    print(e)
+                    logger.warning(
+                        f"Something unexpected happened, check error {e}")
             if validated_data["packages"]:
                 packages: List = \
                     PackageChecker.checking_packages(
@@ -84,6 +88,7 @@ class ProjectSerializer(serializers.ModelSerializer):
                     PackageRelease.objects.create(**i, project=instance)
 
             for i in upgrade_data_if_success:
+                logger.debug(f"Every Package is ok. Adding {i}")
                 package = PackageRelease.objects.get(
                     name=i['name'])
                 package.version = i['version']
@@ -95,14 +100,18 @@ class ProjectSerializer(serializers.ModelSerializer):
                 new_packages: List[OrderedDict] = []
                 old_packages: List[OrderedDict] = []
                 for i in validated_data["packages"]:
+                    if not ("name" in i.keys()):
+                        logger.debug("There is no name on the package")
+                        raise ParseError(
+                            {"error": "One or more packages doesn't exist"})
                     try:
                         package = PackageRelease.objects.get(name=i['name'])
-                        if i['version'] != package.version:
+                        if not ('version' in i.keys()) or \
+                                i['version'] != package.version:
                             old_packages.append(i)
                     except Exception as e:
-                        print(type(e))
-                        print(f"{i['name']} {e}")
-                        print(f"adding {i['name']} to 'new_packages'")
+                        logger.debug(
+                            f"[Serializer] Adding {i['name']} to 'new_packages'")
                         new_packages.append(i)
                 if new_packages or old_packages:
                     packages_new = []
@@ -114,10 +123,14 @@ class ProjectSerializer(serializers.ModelSerializer):
                         packages_old: List[OrderedDict] = \
                             PackageChecker.checking_packages(old_packages)
                     if packages_new:
+                        logger.debug(
+                            "[Serializer] Adding new packages" +
+                            f"to {instance.name}")
                         for i in packages_new:
                             PackageRelease.objects.create(
                                 **i, project=instance)
                     if packages_old:
+                        logger.debug("Changing packages' version")
                         for i in packages_old:
                             package = PackageRelease.objects.get(
                                 name=i['name'])
@@ -125,6 +138,9 @@ class ProjectSerializer(serializers.ModelSerializer):
                             package.save()
             if 'name' in validated_data and \
                     validated_data['name'] != instance.name:
+                logger.debug(
+                    "[Serializer] updating instance's name from" +
+                    f"{instance.name} to {validated_data['name']}")
                 instance.name = validated_data['name']
                 instance.save()
             return instance
