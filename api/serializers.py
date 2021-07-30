@@ -42,6 +42,9 @@ class ProjectSerializer(serializers.ModelSerializer):
         if self.context['request'].method == "PUT":
             logger.debug(
                 f"[Serializers] Method PUT, inserting {validated_data} on DB")
+            if instance.name != validated_data['name']:
+                instance.name = validated_data['name']
+                instance.save()
             # The next lines and for will check if the received packages are
             # already in the DB and check the versions if they are the same.
             # if they are not, the version will be checked. If the version
@@ -90,9 +93,6 @@ class ProjectSerializer(serializers.ModelSerializer):
                     name=i['name'])
                 package.version = i['version']
                 package.save()
-            if instance.name != validated_data['name']:
-                instance.name = validated_data['name']
-                instance.save()
             return instance
 
         elif self.context['request'].method == "PATCH":
