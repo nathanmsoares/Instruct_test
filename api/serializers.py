@@ -21,9 +21,6 @@ class ProjectSerializer(serializers.ModelSerializer):
     packages = PackageSerializer(many=True)
 
     def create(self, validated_data):
-        # TODO
-        # - Processar os pacotes recebidos
-        # - Persistir informações no banco
         packages: List = validated_data['packages']
         print("packages", packages)
         print("type packages", type(packages))
@@ -40,9 +37,6 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         if self.context['request'].method == "PUT":
-            if instance.name != validated_data['name']:
-                instance.name = validated_data['name']
-                instance.save()
             # The next lines and for will check if the received packages are
             # already in the DB and check the versions if they are the same.
             # if they are not, the version will be checked. If the version
@@ -51,7 +45,6 @@ class ProjectSerializer(serializers.ModelSerializer):
             deleted_packages = 0
             for i in range(len(validated_data["packages"])):
                 try:
-                    print(validated_data["packages"])
                     package = PackageRelease.objects.get(
                         name=validated_data["packages"][i-deleted_packages]
                         ['name'])
@@ -70,7 +63,6 @@ class ProjectSerializer(serializers.ModelSerializer):
                         upgrade_data_if_success.extend(packages)
                     print(type(package))
                 except ParseError as e:
-                    print(e)
                     if e.detail['error'].code == 'parse_error':
                         raise ParseError(
                             {"error": "One or more packages doesn't exist"})
@@ -88,6 +80,9 @@ class ProjectSerializer(serializers.ModelSerializer):
                     name=i['name'])
                 package.version = i['version']
                 package.save()
+            if instance.name != validated_data['name']:
+                instance.name = validated_data['name']
+                instance.save()
             return instance
 
         elif self.context['request'].method == "PATCH":
@@ -95,14 +90,15 @@ class ProjectSerializer(serializers.ModelSerializer):
                 new_packages: List[OrderedDict] = []
                 old_packages: List[OrderedDict] = []
                 for i in validated_data["packages"]:
+                    if not ("name" in i.keys()):
+                        raise ParseError(
+                            {"error": "One or more packages doesn't exist"})
                     try:
                         package = PackageRelease.objects.get(name=i['name'])
-                        if i['version'] != package.version:
+                        if not ('version' in i.keys()) or\
+                                i['version'] != package.version:
                             old_packages.append(i)
                     except Exception as e:
-                        print(type(e))
-                        print(f"{i['name']} {e}")
-                        print(f"adding {i['name']} to 'new_packages'")
                         new_packages.append(i)
                 if new_packages or old_packages:
                     packages_new = []
