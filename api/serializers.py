@@ -45,10 +45,11 @@ class ProjectSerializer(serializers.ModelSerializer):
             deleted_packages = 0
             for i in range(len(validated_data["packages"])):
                 try:
-                    package = PackageRelease.objects.get(
+                    package = PackageRelease.objects.filter(
                         name=validated_data["packages"][i-deleted_packages]
-                        ['name'])
-                    if package.version == \
+                        ['name']).filter(project=instance)
+                    print(package[0])
+                    if package[0].version == \
                             validated_data["packages"][i-deleted_packages][
                                 'version']:
                         del validated_data["packages"][i-deleted_packages]
@@ -76,10 +77,11 @@ class ProjectSerializer(serializers.ModelSerializer):
                     PackageRelease.objects.create(**i, project=instance)
 
             for i in upgrade_data_if_success:
-                package = PackageRelease.objects.get(
-                    name=i['name'])
-                package.version = i['version']
-                package.save()
+                package = PackageRelease.objects.filter(
+                    name=i['name']).filter(project=instance)
+                package_temp = PackageRelease.objects.get(id=package[0].id)
+                package_temp.version = i['version']
+                package_temp.save()
             if instance.name != validated_data['name']:
                 instance.name = validated_data['name']
                 instance.save()
@@ -94,9 +96,10 @@ class ProjectSerializer(serializers.ModelSerializer):
                         raise ParseError(
                             {"error": "One or more packages doesn't exist"})
                     try:
-                        package = PackageRelease.objects.get(name=i['name'])
+                        package = PackageRelease.objects.filter(
+                            name=i['name']).filter(project=instance)
                         if not ('version' in i.keys()) or\
-                                i['version'] != package.version:
+                                i['version'] != package[0].version:
                             old_packages.append(i)
                     except Exception as e:
                         new_packages.append(i)
@@ -115,10 +118,12 @@ class ProjectSerializer(serializers.ModelSerializer):
                                 **i, project=instance)
                     if packages_old:
                         for i in packages_old:
-                            package = PackageRelease.objects.get(
-                                name=i['name'])
-                            package.version = i['version']
-                            package.save()
+                            package = PackageRelease.objects.filter(
+                                name=i['name']).filter(project=instance)
+                            package_temp = PackageRelease.objects.get(
+                                id=package[0].id)
+                            package_temp.version = i['version']
+                            package_temp.save()
             if 'name' in validated_data and \
                     validated_data['name'] != instance.name:
                 instance.name = validated_data['name']
